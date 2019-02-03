@@ -1,0 +1,191 @@
+---
+title: "PJ1_HappyDB"
+author: "Xiaoxi Zhao"
+date: "2/2/2019"
+output:
+  rmarkdown::html_document:
+    theme: spacelab
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load library, include=FALSE}
+library(tm)
+library(tidytext)
+library(tidyverse)
+library(DT)
+library(vcd)
+library(shiny)
+library(ngram)
+library(RColorBrewer)
+library(gridGraphics)
+library(gridExtra)
+library(wordcloud)
+```
+
+
+```{r read data, warning=FALSE, message=FALSE,echo=FALSE}
+urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/cleaned_hm.csv'
+hm_data <- read_csv(urlfile)
+urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/demographic.csv'
+demo_data <- read_csv(urlfile)
+```
+
+```{r text processing, warning=FALSE, message=FALSE, echo=FALSE}
+#convert all the letters to the lower case, and removing punctuation, numbers, empty words and extra white space
+corpus <- VCorpus(VectorSource(hm_data$cleaned_hm))%>%
+  tm_map(content_transformer(tolower))%>%
+  tm_map(removePunctuation)%>%
+  tm_map(removeNumbers)%>%
+  tm_map(removeWords, character(0))%>%
+  tm_map(stripWhitespace)
+
+#stem words
+stemmed <- tm_map(corpus, stemDocument) %>%
+  tidy() %>%
+  select(text)
+
+#Create a tidy format of the dictionary to be used for completing stems
+dict <- tidy(corpus) %>%
+  select(text) %>%
+  unnest_tokens(dictionary, text)
+
+#remove stopwords
+data("stop_words")
+word <- c("happy","ago","yesterday","lot","today","months","month",
+                 "happier","happiest","last","week","past")
+stop_words <- stop_words %>%
+  bind_rows(mutate(tibble(word), lexicon = "updated"))
+completed <- stemmed %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(stems, text) %>%
+  bind_cols(dict) %>%
+  anti_join(stop_words, by = c("dictionary" = "word"))
+
+#match the stem with word of highest frequency
+completed <- completed %>%
+  group_by(stems) %>%
+  count(dictionary) %>%
+  mutate(word = dictionary[which.max(n)]) %>%
+  ungroup() %>%
+  select(stems, word) %>%
+  distinct() %>%
+  right_join(completed) %>%
+  select(-stems)
+
+# complete the stem and combine with the original cleaned_data
+completed <- completed %>%
+  group_by(id) %>%
+  summarise(text = str_c(word, collapse = " ")) %>%
+  ungroup()
+hm_data <- hm_data %>%
+  mutate(id = row_number()) %>%
+  inner_join(completed)
+write_csv(hm_data, "../output/processed_moments.csv")
+
+#combine demographic.cvs and the cleaned data
+sel_data <- hm_data %>%
+  inner_join(demo_data, by = "wid") %>%
+  select(wid,
+         original_hm,
+         gender, 
+         marital, 
+         parenthood,
+         reflection_period,
+         age, 
+         country, 
+         predicted_category, 
+         text) %>%
+  mutate(count = sapply(hm_data$text, wordcount)) 
+```
+
+As we would like to identify interesting words for each inaugural speech, we use [TF-IDF](https://en.wikipedia.org/wiki/Tf%E2%80%93idf) to weigh each term within each speech. It highlights terms that are more specific for a particular speech. 
+
+```{r echo=F}
+corpus <- VCorpus(VectorSource(hm_data$text))
+happy_dtm_tfidf <- DocumentTermMatrix(corpus, control = list(weighting = function(x) weightTfIdf(x,normalize =FALSE), stopwords = TRUE))
+happy_dtm_tfidf = removeSparseTerms(happy_dtm_tfidf, 0.99)
+freq = data.frame(sort(colSums(as.matrix(happy_dtm_tfidf)), decreasing=TRUE))
+```
+
+```{r fig.align="center",fig.height=5,fig.width=5,echo=FALSE}
+wordcloud(rownames(freq), freq[,1], max.words=100,min.freq = 3, rot.per=0.3,random.order=FALSE,scale=c(4,0.2),use.r.layout=T,colors=brewer.pal(8,"Set1"))
+```
+```{r echo=F,fig.height=10,fig.width=10,echo=FALSE}
+par(mfrow=c(1,2))
+corpus <- VCorpus(VectorSource(hm_data[hm_data$reflection_period=="24h",]$text))
+happy_dtm_tfidf <- DocumentTermMatrix(corpus, control = list(weighting = function(x) weightTfIdf(x,normalize =FALSE), stopwords = TRUE))
+happy_dtm_tfidf = removeSparseTerms(happy_dtm_tfidf, 0.99)
+freq = data.frame(sort(colSums(as.matrix(happy_dtm_tfidf)), decreasing=TRUE))
+wordcloud(rownames(freq), freq[,1], max.words=100,min.freq = 3, rot.per=0.3,random.order=FALSE,scale=c(4,0.2),use.r.layout=T,colors=brewer.pal(8,"Set1"))
+corpus <- VCorpus(VectorSource(hm_data[hm_data$reflection_period=="3m",]$text))
+happy_dtm_tfidf <- DocumentTermMatrix(corpus, control = list(weighting = function(x) weightTfIdf(x,normalize =FALSE), stopwords = TRUE))
+happy_dtm_tfidf = removeSparseTerms(happy_dtm_tfidf, 0.99)
+freq = data.frame(sort(colSums(as.matrix(happy_dtm_tfidf)), decreasing=TRUE))
+wordcloud(rownames(freq), freq[,1], max.words=100,min.freq = 3, rot.per=0.3,random.order=FALSE,scale=c(4,0.2),use.r.layout=T,colors=brewer.pal(8,"Set1"))
+```
+```{r pie plot,echo=FALSE,warning=FALSE,fig.align="center"}
+par(mfrow=c(1,1))
+t<-sort(table(sel_data$predicted_category))
+type<-names(t)
+nums<-unname(t)
+df<-data.frame(type,nums)
+df<-df%>%
+  select(type,nums=Freq)
+col.use=brewer.pal(7, "Set2")
+label_value <- paste('(', round(t/sum(t) * 100, 1), '%)', sep = '')
+label <- paste(df$type, label_value, sep = '')
+ggplot(data=df,mapping=aes(x="Content",y=nums,fill=label))+
+  geom_bar(stat="identity",position="stack")+
+  coord_polar(theta="y")+
+  scale_fill_manual(values=col.use)+
+  labs(x = '', y = '', title = '')+
+  theme(axis.text = element_blank())
+```
+
+```{r splitage,echo=FALSE,warning=FALSE}
+group<-c(1,seq(17,87,by=10),98)
+agenum<-as.numeric(sel_data$age)
+age_data<-sel_data[!is.na(agenum),]
+age_data$age<-as.numeric(age_data$age)
+age_data<-age_data%>%
+  select(age,predicted_category)%>%
+  filter(age<100)%>%
+  mutate(agegroup=cut(age,breaks=group,labels=c("2-4","17-27","27-37","37-47","47-57","57-67","67-77","77-87","87-98")))%>%
+  count(agegroup,predicted_category)%>%
+  spread(predicted_category,n)
+```
+
+```{r stackplot,echo=FALSE,fig.align="center"}
+age_data[is.na(age_data)]<-0
+age_data<-gather(age_data,attribute,value,-agegroup)
+age_data<-as.data.frame(age_data)
+age_data2 <- data.frame(category = as.numeric(as.factor(age_data$attribute)),
+                          freq = age_data$value,
+                          age = age_data$agegroup)
+ggplot(age_data2, aes(x=category, y=freq, fill=age)) + 
+    geom_area() +
+  scale_x_continuous(breaks=seq(1, 7, 1),
+        labels=names(table(age_data$attribute)))
+```
+
+
+```{r mosaic plot,echo=FALSE,warning=FALSE,fig.align="center"}
+
+mosaic(~predicted_category+marital,data=sel_data,highlighting="marital",,highlighting_fill=c("brown","pink","brown3","lightblue","coral4"),labeling= labeling_border(varnames=c(F,F),rot_labels = c(90,0,90,0), just_labels = c("left", "right", "right", "right")),margins=unit(4.7,"lines"))
+
+```
+
+```{r,include=FALSE,warning=F}
+mosaic(~predicted_category+gender,data=sel_data,highlighting="gender",,highlighting_fill=c("pink","lightblue","black"),labeling= labeling_border(labels=c(F,T),varnames=c(F,T),rot_labels = c(0,90,90,0), just_labels = c("left", "right", "right", "right")),margins=unit(4.1,"lines"))
+m<-grid.grab()
+mosaic(~predicted_category+parenthood,data=sel_data,highlighting="parenthood",,highlighting_fill=c("pink","lightblue"),labeling= labeling_border(varnames=c(F,T),rot_labels = c(0,90,90,0), just_labels = c("left", "right", "right", "right")),margins=unit(4.1,"lines"))
+a<-grid.grab()
+```
+
+```{r,echo=FALSE,warning=F}
+grid.arrange(m,a,ncol=2)
+```
+
