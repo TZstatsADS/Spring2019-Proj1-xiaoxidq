@@ -1,0 +1,116 @@
+---
+title: "Untitled"
+author: "Xiaoxi Zhao"
+date: "2/3/2019"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load library, include=FALSE}
+library(tm)
+library(tidytext)
+library(tidyverse)
+library(DT)
+library(vcd)
+library(shiny)
+library(ngram)
+library(RColorBrewer)
+library(gridGraphics)
+library(gridExtra)
+library(wordcloud)
+```
+```{r read data, warning=FALSE, message=FALSE,echo=FALSE}
+urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/cleaned_hm.csv'
+hm_data <- read_csv(urlfile)
+urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/demographic.csv'
+demo_data <- read_csv(urlfile)
+```
+
+```{r text processing, warning=FALSE, message=FALSE, echo=FALSE}
+#convert all the letters to the lower case, and removing punctuation, numbers, empty words and extra white space
+corpus <- VCorpus(VectorSource(hm_data$cleaned_hm))%>%
+  tm_map(content_transformer(tolower))%>%
+  tm_map(removePunctuation)%>%
+  tm_map(removeNumbers)%>%
+  tm_map(removeWords, character(0))%>%
+  tm_map(stripWhitespace)
+
+#stem words
+stemmed <- tm_map(corpus, stemDocument) %>%
+  tidy() %>%
+  select(text)
+
+#Create a tidy format of the dictionary to be used for completing stems
+dict <- tidy(corpus) %>%
+  select(text) %>%
+  unnest_tokens(dictionary, text)
+
+#remove stopwords
+data("stop_words")
+word <- c("happy","ago","yesterday","lot","today","months","month",
+                 "happier","happiest","last","week","past")
+stop_words <- stop_words %>%
+  bind_rows(mutate(tibble(word), lexicon = "updated"))
+completed <- stemmed %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(stems, text) %>%
+  bind_cols(dict) %>%
+  anti_join(stop_words, by = c("dictionary" = "word"))
+
+#match the stem with word of highest frequency
+completed <- completed %>%
+  group_by(stems) %>%
+  count(dictionary) %>%
+  mutate(word = dictionary[which.max(n)]) %>%
+  ungroup() %>%
+  select(stems, word) %>%
+  distinct() %>%
+  right_join(completed) %>%
+  select(-stems)
+
+# complete the stem and combine with the original cleaned_data
+completed <- completed %>%
+  group_by(id) %>%
+  summarise(text = str_c(word, collapse = " ")) %>%
+  ungroup()
+hm_data <- hm_data %>%
+  mutate(id = row_number()) %>%
+  inner_join(completed)
+write_csv(hm_data, "../output/processed_moments.csv")
+
+```
+
+##Sentiment Analysis
+
+```{r}
+
+senti_data<-sel_data%>%
+  select(gender,marital,parenthood,country,cleaned_hm,text)
+sentence.list=NULL
+for(i in 1:nrow(senti_data)){
+  sentences=sent_detect(senti_data$cleaned_hm[i],
+                        endmarks = c("?", ".", "!", "|",";"))
+  if(length(sentences)>0){
+    emotions=get_nrc_sentiment(sentences)
+    word.count=word_count(sentences)
+    if (length(sentences)==1){
+    emotions=as.matrix(emotions)/(word.count+0.01)} else { emotions=diag(1/(word.count+0.01))%*%as.matrix(emotions)}
+    sentence.list=rbind(sentence.list, 
+                        cbind(senti_data[i,-5],
+                              sentences=as.character(sentences), 
+                              word.count,
+                              emotions,
+                              sent.id=1:length(sentences)
+                              )
+    )
+  }
+}
+
+```
+
+```{r}
+write_csv(sentence.list, "../output/sentence.csv")
+```
+
