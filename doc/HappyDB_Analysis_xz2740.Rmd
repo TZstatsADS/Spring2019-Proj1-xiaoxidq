@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r load library, include=FALSE}
+#load the required packages
 library(tm)
 library(tidytext)
 library(tidyverse)
@@ -24,7 +25,6 @@ library(gridGraphics)
 library(gridExtra)
 library(wordcloud)
 ```
-
 
 ```{r read data, warning=FALSE, message=FALSE,echo=FALSE}
 urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/cleaned_hm.csv'
@@ -115,17 +115,20 @@ wordcloud(rownames(freq), freq[,1], max.words=100,min.freq = 3, rot.per=0.3,rand
 ```
 ```{r echo=F,fig.height=10,fig.width=10,echo=FALSE}
 par(mfrow=c(1,2))
+#wordcloud of 24hours reaction
 corpus <- VCorpus(VectorSource(hm_data[hm_data$reflection_period=="24h",]$text))
 happy_dtm_tfidf <- DocumentTermMatrix(corpus, control = list(weighting = function(x) weightTfIdf(x,normalize =FALSE), stopwords = TRUE))
 happy_dtm_tfidf = removeSparseTerms(happy_dtm_tfidf, 0.99)
 freq = data.frame(sort(colSums(as.matrix(happy_dtm_tfidf)), decreasing=TRUE))
 wordcloud(rownames(freq), freq[,1], max.words=100,min.freq = 3, rot.per=0.3,random.order=FALSE,scale=c(4,0.2),use.r.layout=T,colors=brewer.pal(8,"Set1"))
+#wordcloud of 3months reaction
 corpus <- VCorpus(VectorSource(hm_data[hm_data$reflection_period=="3m",]$text))
 happy_dtm_tfidf <- DocumentTermMatrix(corpus, control = list(weighting = function(x) weightTfIdf(x,normalize =FALSE), stopwords = TRUE))
 happy_dtm_tfidf = removeSparseTerms(happy_dtm_tfidf, 0.99)
 freq = data.frame(sort(colSums(as.matrix(happy_dtm_tfidf)), decreasing=TRUE))
 wordcloud(rownames(freq), freq[,1], max.words=100,min.freq = 3, rot.per=0.3,random.order=FALSE,scale=c(4,0.2),use.r.layout=T,colors=brewer.pal(8,"Set1"))
 ```
+
 ```{r pie plot,echo=FALSE,warning=FALSE,fig.align="center"}
 par(mfrow=c(1,1))
 t<-sort(table(sel_data$predicted_category))
