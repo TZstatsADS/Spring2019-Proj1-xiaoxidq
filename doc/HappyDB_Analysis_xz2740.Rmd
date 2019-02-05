@@ -1,7 +1,6 @@
 ---
-title: "PJ1_HappyDB"
+title: "Happy Moments: What makes you happy?"
 author: "Xiaoxi Zhao"
-date: "2/2/2019"
 output:
   rmarkdown::html_document:
     theme: spacelab
@@ -10,6 +9,12 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+![](../figs/images.jpeg)
+
+"Happiness is the only thing that humans desire for its own sake." said by the great philosopher Aristotle in the Nicomanchean Ethics. I feel happy because I saw a beatiful cat on the street, or I ate a delicious pumpkin pie made by my friend Jessica, or maybe I just stayed at home for a whole day relaxing and doing nothing, and it made me happy. The reasons for happiness can be vairous, but what exactly can make people happy? When people say they're happy, what kind of emotions do they actually feel? Does the cause of happiness differ for different kinds of people? Let's find out the answers by analyzing the [HappyDB](https://rit-public.github.io/HappyDB/) dataset, where 100,000 happy moments are recorded!
+
+##What do happy moments look like?
 
 ```{r load library, include=FALSE}
 #load the required packages
@@ -28,16 +33,22 @@ library(sentimentr)
 library(qdap)
 library(syuzhet)
 library(d3heatmap)
+library(topicmodels)
+library(REmap)
+library(factoextra)
 ```
 
 ```{r read data, warning=FALSE, message=FALSE,echo=FALSE}
-
+#the generation process of the files are not inclued in this R markdown file due to the running time of data processing
+#to check the file generation process, refer to "Generate_output+files.R" 
 urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/demographic.csv'
 demo_data <- read_csv(urlfile)
 hm_data<-read_csv("../output/processed_moments.csv")
+vad_data<-read_csv("../data/vad.csv")
 sentence.data<-read.csv("../output/sentence.csv",as.is=T)
+sense_data<-read_csv("../data/senselabel.csv")
 
-#combine demographic.cvs and the cleaned data
+#combine demographic.cvs and the cleaned data(hm_data)
 sel_data <- hm_data %>%
   inner_join(demo_data, by = "wid") %>%
   select(wid,
@@ -52,6 +63,73 @@ sel_data <- hm_data %>%
          text) %>%
   mutate(count = sapply(hm_data$text, wordcount)) 
 ```
+
+First, let's check the Happy Moments Decriptions and see how our happy moments differ from the routine moments by analyzing the complexity of sentences and the [emotional states](https://en.wikipedia.org/wiki/PAD_emotional_state_model) .
+
+###Complexity of Sentences
+
+With the 100,392 records of happy moments, we extract 139,760 sentences. On the one hand, each record will have 1.39 sentences and the records with only one sentence account for 83% of the total, which means that in most cases, happy moments are not long-lasting stories or hard to explain. Further, when we look into the sentences, we notice that only 16% of sentences have more than 20 words, which are considered as long sentences. Also compared to the length of sentence in general (10-20 words), most of our happy moments sentences have 5-15 words, which also shows that happy moments decriptions are shorter than general. 
+
+Meanwhile, on the otherhand, when we look into the number of verbs in each sentence, we can find that 42% of sentences have 3 verbs of more. The number of verbs can be considered as one proxy for the complexity of sentences in HappyDB and the high proportion of multiple verbs in one sentence indicates that people express quite complex thoughts in their "short" moment.
+
+```{r barplot_verbpersentence,echo=F}
+#data processing to generate the bar plot of verbs per sentence
+verb_data<-sense_data[sense_data$POS=="VERB",]%>%
+  count(hmid)
+verb_data<-verb_data%>%
+  left_join(hm_data,by="hmid")%>%
+  select(hmid,num_sentence,n)%>%
+  na.omit%>%
+  filter(num_sentence>0)%>%
+  mutate(verbpersentence=floor(n/num_sentence))
+vpers<-rep(verb_data$verbpersentence,verb_data$num_sentence)
+vpers<-as.data.frame(table(vpers)[1:9])
+colnames(vpers)<-c("number_of_verbs","density")
+vpers$density<-as.numeric(vpers$density)
+vpers$density<-round(vpers$density/sum(vpers$density),2)
+#generate the bar plot of verbs per sentence
+p2<-ggplot(data = vpers,aes(x=number_of_verbs,y=density,fill=number_of_verbs)) +
+  geom_bar(stat="identity")+
+  geom_text(aes(label = density, hjust = 0.5, vjust = 3)) +
+  labs(title="Number of verbs per sentence")
+```
+
+```{r barplot_sentence,echo=FALSE,fig.align="center",fig.height=4,fig.width=10}
+#data processing to generate the bar plot of words per sentence
+wordinsen<-sentence.data$word.count
+group<-c(seq(-1,30,by=5),150)
+wordgroup=cut(wordinsen,breaks=group,labels=c("0-5","5-10","10-15","15-20","20-25","25-30","30-150"))
+wpers<-as.data.frame(table(wordgroup))
+colnames(wpers)<-c("number_of_words","density")
+wpers$density<-round(wpers$density/sum(wpers$density),2)
+#generate the bar plot of words per sentence
+p1<-ggplot(data = wpers,aes(x=number_of_words,y=density,fill=number_of_words)) +
+  geom_bar(stat="identity")+
+  geom_text(aes(label = density, hjust = 0.5, vjust = 3)) +
+  labs(title="Number of words per sentence")
+#plot the 2 graphs
+grid.arrange(p1, p2,layout_matrix=matrix(1:2,nrow=1,ncol=2))
+```
+
+###VAD Emotional States
+
+Let's take a look on the VAD (also called PAD) socres of the happy moments. VAD model stands for Valence-Arousal-Dominance model ("P" in PAD stands for Pleasure), which provides a score for each lemmatized word on a scale of pleasure-displeasure (valence), excitement-calm (arousal), and control-inhibition (dominance). After computing the mean of each VAD score in the Happy Moments , and comparing this score to [the scores of the ten sections of Gardian corpus](https://www.sciencedirect.com/science/article/pii/S1877042813042109). We can see that HappyDB's VAD score is closer to VAD score of the travel section ($V\approx6.2, A\approx4.0, D\approx5.7$). In addition, every score in of Valence, Arousal and Dominance of HappyDB is larger than the corresponding highest socre of the ten sections, which is a quantative proof that when people express their happiness, they are highly pleased, excited and also self-dominant.
+
+```{r}
+#for vad scores, we use the data in HappyDB named "vad.csv"
+vad_data<-vad_data%>%
+  summarise(
+    valency=round(mean(valency,na.rm=TRUE),2),
+    dominance=round(mean(dominance,na.rm=TRUE),2),
+    arousal=round(mean(arousal,na.rm=TRUE),2))
+datatable(vad_data)
+```
+
+##Why are people happy? How do the reasons differ for different groups of people?
+
+After 
+
+###Words frequently used
 
 As we would like to identify interesting words for each inaugural speech, we use [TF-IDF](https://en.wikipedia.org/wiki/Tf%E2%80%93idf) to weigh each term within each speech. It highlights terms that are more specific for a particular speech. 
 
@@ -80,6 +158,8 @@ happy_dtm_tfidf = removeSparseTerms(happy_dtm_tfidf, 0.99)
 freq = data.frame(sort(colSums(as.matrix(happy_dtm_tfidf)), decreasing=TRUE))
 wordcloud(rownames(freq), freq[,1], max.words=70,min.freq = 3, rot.per=0.3,random.order=FALSE,scale=c(4,0.2),use.r.layout=T,colors=brewer.pal(8,"Set1"))
 ```
+
+###Categories of happiness
 
 ```{r pie plot,echo=FALSE,warning=FALSE,fig.align="center"}
 par(mfrow=c(1,1))
@@ -144,7 +224,7 @@ a<-grid.grab()
 grid.arrange(m,a,ncol=2)
 ```
 
-##Sentiment Analysis
+##When people say they are happy, what kind of emotion do they actually feel?
 
 ```{r echo=F,fig.align="center",fig.height=20}
 ## Summary emotions
@@ -162,14 +242,77 @@ happy.summary=tbl_df(sentence.data)%>%
     negative=mean(negative,na.rm=TRUE),
     positive=mean(positive,na.rm=TRUE)
   )
-happy.summary<-happy.summary[happy.summary$country!="NA",]
+happy.summary<-happy.summary[!is.na(happy.summary$country) ,]
 countryname<-happy.summary$country
-happy.summary<-data.matrix(happy.summary[,-1])
-rownames(happy.summary)<-as.data.frame(countryname)[,1]
+happyplot.summary<-data.matrix(happy.summary[,-1])
+rownames(happyplot.summary)<-as.data.frame(countryname)[,1]
+
 library(shiny)
-div(d3heatmap(happy.summary, scale="none", colors= "Reds",
+div(d3heatmap(happyplot.summary, scale="none", colors= "Reds",
           xaxis_font_size = 8,Rowv = FALSE,Colv=FALSE,show_grid=TRUE,yaxis_font_size = 4 ),
     align='center')
+```
+```{r mapplot,echo=F, warning=F,message=F}
+countrycode2name<-read_csv("../data/countryname.csv")
+data<-merge(happy.summary,countrycode2name,by.x="country",by.y="alpha-3")
+data = data.frame(country = data[,12],
+                   value = data[,11]*1000)
+out<-remapC(data,maptype = "world",color = 'skyblue')
+plot(out)
+```
+
+See plot [here](http://localhost:13215/session/ID_20190204141401_2459152.html)
+
+##How does the reason of happiness differ for people from different countries?
+
+```{r}
+
+ldaOut.topics <- read.csv("../output/DocsToTopics.csv")
+
+#top 20 terms in each topic
+ldaOut.terms <- read.csv("../output/TopicsToTerms.csv")
+
+#probabilities associated with each topic assignment
+
+topic_data<-read.csv("../output/Topicswinfo.csv")[,-1]
+topicProbabilities <-read.csv("../output/TopicProbabilities.csv")[,-1]
+
+```
+
+###9 Topics of Happy Moments
+
+```{r text processing,warning=F}
+topics.hash=c("love","school","people","food","family","shopping","vacation","entertainment","celebration")
+colnames(topicProbabilities)=topics.hash
+topicProbabilities<-cbind(topicProbabilities,topic_data[,c(3,5,8)])
+
+country.summary=tbl_df(topicProbabilities)%>%
+  group_by(country)%>%
+  summarise(
+    love=mean(love,na.rm=TRUE),
+    school=mean(school,na.rm=TRUE),
+    people=mean(people,na.rm=TRUE),
+    food=mean(food,na.rm=TRUE),
+    family=mean(family,na.rm=TRUE),
+    shopping=mean(shopping,na.rm=TRUE),
+    vacation=mean(vacation,na.rm=TRUE),
+    entertainment=mean(entertainment,na.rm=TRUE),
+    celebration=mean(celebration,na.rm=TRUE))%>%
+  inner_join(happy.summary[table(sel_data$country)>50,],by="country")
+  
+```
+
+###Clustering of the countries
+
+```{r}
+set.seed(100)
+country.summary<-as.data.frame(country.summary)
+rownames(country.summary)<-as.character((country.summary[,1]))
+km.res=kmeans(scale(country.summary[,-1]), iter.max=200,3)
+fviz_cluster(km.res, 
+             stand=T, repel= TRUE,
+             data = country.summary[,-1],
+             show.clust.cent=FALSE)
 ```
 
 

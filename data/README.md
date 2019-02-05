@@ -3,3 +3,7 @@
 
 The data directory contains data used in the analysis. This is treated as read only; in paricular the R/python files are never allowed to write to the files in here. Depending on the project, these might be csv files, a database, and the directory itself may have subdirectories.
 
+"countryname.csv" contains the countryname and their country code used in the "demographic.csv"
+
+All the other data is downloaded from https://rit-public.github.io/HappyDB/
+
