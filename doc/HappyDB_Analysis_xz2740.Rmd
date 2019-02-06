@@ -337,7 +337,7 @@ out<-remapC(data,maptype = "world",color = 'skyblue')
 plot(out)
 ```
 
-[Positive Scores in different countries](../figs/mapplot.png)
+![Positive Scores in different countries](../figs/mapplot.png)
 
 The darker the blue is, the higher the positive score. 
 
@@ -450,13 +450,13 @@ By analyzing the HappyDB, we can see that people are highly emotional when talki
 
 + Happiness come maily from affections (with friends, family, lover) and achievements (job, school)
 
-+For 24h reflection period, people tend to focus more on instant happiness and daily happy moments like “played a game” or “had a delicious food”, whereas for the 3m reflection period, people tend to focus on long-term happiness such as "life", "job", "school"
++ For 24h reflection period, people tend to focus more on instant happiness and daily happy moments like “played a game” or “had a delicious food”, whereas for the 3m reflection period, people tend to focus on long-term happiness such as "life", "job", "school"
 
-+Women, parents, married people and people aged 27-37 seem be happy from affections more, whereas male, nonpartents and single people seem be happy from achievements more.
++ Women, parents, married people and people aged 27-37 seem be happy from affections more, whereas male, nonpartents and single people seem be happy from achievements more.
 
-+Happiness stands for joy, anticipation and trust instead of surprise.
++ Happiness stands for joy, anticipation and trust instead of surprise.
 
-+Different countries show different patterns about happiness, by clustering method, we can see Egypt has a specific pattern other than any other countries.
++ Different countries show different patterns about happiness, by clustering method, we can see Egypt has a specific pattern other than any other countries.
 
 ![](../figs/happy.jpg)
 
